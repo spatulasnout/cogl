@@ -83,10 +83,10 @@ _cogl_winsys_context_init (CoglContext *context, GError **error)
 {
   context->winsys = &_cogl_winsys_stub_dummy_ptr;
 
-  if (!_cogl_gl_check_version (error))
+  if (!_cogl_context_check_gl_version (context, error))
     return FALSE;
 
-  _cogl_gl_update_features (context);
+  _cogl_context_update_features (context);
 
   memset (context->winsys_features, 0, sizeof (context->winsys_features));
 
@@ -134,6 +134,7 @@ _cogl_winsys_onscreen_set_visibility (CoglOnscreen *onscreen,
 
 static CoglWinsysVtable _cogl_winsys_vtable =
   {
+    .id = COGL_WINSYS_ID_STUB,
     .name = "STUB",
     .get_proc_address = _cogl_winsys_get_proc_address,
     .renderer_connect = _cogl_winsys_renderer_connect,

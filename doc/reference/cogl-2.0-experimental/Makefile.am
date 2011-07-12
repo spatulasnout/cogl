@@ -9,7 +9,7 @@ AUTOMAKE_OPTIONS = 1.6
 # of using the various options.
 
 # The name of the module, e.g. 'glib'.
-DOC_MODULE=cogl
+DOC_MODULE=cogl-2.0-experimental
 
 # The top-level SGML file. You can change this if you want to.
 DOC_MAIN_SGML_FILE=$(DOC_MODULE)-docs.xml
@@ -82,7 +82,9 @@ IGNORE_HFILES=\
 	cogl-primitives-private.h		\
 	cogl-private.h				\
 	cogl-program-private.h			\
+	cogl-program.h				\
 	cogl-shader-private.h			\
+	cogl-shader.h				\
 	cogl-sub-texture-private.h		\
 	cogl-texture-2d-private.h		\
 	cogl-texture-2d-sliced-private.h	\
@@ -95,7 +97,6 @@ IGNORE_HFILES=\
 	cogl-vertex-buffer-private.h		\
 	cogl-blend-string.h 			\
 	cogl-clip-stack.h 			\
-	cogl-context.h 				\
 	cogl-debug.h 				\
 	cogl-defines.h 				\
 	cogl-deprecated.h 			\

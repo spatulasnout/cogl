@@ -91,6 +91,10 @@ typedef struct _CoglFramebuffer CoglFramebuffer;
 #include <cogl/cogl-framebuffer.h>
 #ifdef COGL_HAS_XLIB
 #include <cogl/cogl-xlib.h>
+#include <cogl/cogl-xlib-renderer.h>
+#endif
+#if COGL_HAS_EGL_PLATFORM_WAYLAND_SUPPORT
+#include <cogl/cogl-wayland-renderer.h>
 #endif
 /* XXX: This will definitly go away once all the Clutter winsys
  * code has been migrated down into Cogl! */
@@ -201,58 +205,6 @@ cogl_get_bitmasks (int *red,
                    int *green,
                    int *blue,
                    int *alpha);
-
-/*
- * _cogl_framebuffer_get_red_bits:
- * @framebuffer: a handle for a framebuffer
- *
- * Retrieves the number of red bits of @framebuffer
- *
- * Return value: the number of bits
- *
- * Since: 1.4
- */
-int
-_cogl_framebuffer_get_red_bits (CoglFramebuffer *framebuffer);
-
-/*
- * _cogl_framebuffer_get_green_bits:
- * @framebuffer: a handle for a framebuffer
- *
- * Retrieves the number of green bits of @framebuffer
- *
- * Return value: the number of bits
- *
- * Since: 1.4
- */
-int
-_cogl_framebuffer_get_green_bits (CoglFramebuffer *framebuffer);
-
-/*
- * _cogl_framebuffer_get_blue_bits:
- * @framebuffer: a handle for a framebuffer
- *
- * Retrieves the number of blue bits of @framebuffer
- *
- * Return value: the number of bits
- *
- * Since: 1.4
- */
-int
-_cogl_framebuffer_get_blue_bits (CoglFramebuffer *framebuffer);
-
-/*
- * _cogl_framebuffer_get_alpha_bits:
- * @framebuffer: a handle for a framebuffer
- *
- * Retrieves the number of alpha bits of @framebuffer
- *
- * Return value: the number of bits
- *
- * Since: 1.4
- */
-int
-_cogl_framebuffer_get_alpha_bits (CoglFramebuffer *framebuffer);
 
 /**
  * cogl_perspective:

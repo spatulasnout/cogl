@@ -24,8 +24,11 @@
 #ifndef __COGL_RENDERER_PRIVATE_H
 #define __COGL_RENDERER_PRIVATE_H
 
+#include <gmodule.h>
+
 #include "cogl-object-private.h"
 #include "cogl-winsys-private.h"
+#include "cogl-internal.h"
 
 #ifdef COGL_HAS_XLIB_SUPPORT
 #include <X11/Xlib.h>
@@ -40,9 +43,16 @@ struct _CoglRenderer
   CoglObject _parent;
   gboolean connected;
   const CoglWinsysVtable *winsys_vtable;
+  CoglWinsysID winsys_id_override;
 #ifdef COGL_HAS_XLIB_SUPPORT
   Display *foreign_xdpy;
 #endif
+
+  CoglDriver driver;
+#ifndef HAVE_DIRECTLY_LINKED_GL_LIBRARY
+  GModule *libgl_module;
+#endif
+
 #if COGL_HAS_EGL_PLATFORM_WAYLAND_SUPPORT
   struct wl_display *foreign_wayland_display;
   struct wl_compositor *foreign_wayland_compositor;
@@ -51,5 +61,22 @@ struct _CoglRenderer
   GSList *event_filters;
   void *winsys;
 };
+
+typedef CoglFilterReturn (* CoglNativeFilterFunc) (void *native_event,
+                                                   void *data);
+
+CoglFilterReturn
+_cogl_renderer_handle_native_event (CoglRenderer *renderer,
+                                    void *event);
+
+void
+_cogl_renderer_add_native_filter (CoglRenderer *renderer,
+                                  CoglNativeFilterFunc func,
+                                  void *data);
+
+void
+_cogl_renderer_remove_native_filter (CoglRenderer *renderer,
+                                     CoglNativeFilterFunc func,
+                                     void *data);
 
 #endif /* __COGL_RENDERER_PRIVATE_H */

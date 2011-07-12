@@ -28,8 +28,12 @@
 #include "config.h"
 #endif
 
+#include <string.h>
+
 #include "cogl.h"
+#include "cogl-private.h"
 #include "cogl-object.h"
+#include "cogl-internal.h"
 
 #include "cogl-display-private.h"
 #include "cogl-renderer-private.h"
@@ -69,6 +73,8 @@ cogl_display_new (CoglRenderer *renderer,
 {
   CoglDisplay *display = g_slice_new0 (CoglDisplay);
   GError *error = NULL;
+
+  _cogl_init ();
 
   display->renderer = renderer;
   if (renderer)

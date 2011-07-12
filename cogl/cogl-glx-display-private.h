@@ -22,14 +22,36 @@
  *
  */
 
-#ifndef __COGL_DISPLAY_XLIB_PRIVATE_H
-#define __COGL_DISPLAY_XLIB_PRIVATE_H
+#ifndef __COGL_DISPLAY_GLX_PRIVATE_H
+#define __COGL_DISPLAY_GLX_PRIVATE_H
 
-#include <X11/Xlib.h>
+#include "cogl-object-private.h"
+#include "cogl-xlib-display-private.h"
 
-typedef struct _CoglDisplayXlib
+typedef struct _CoglGLXCachedConfig
 {
-  Window dummy_xwin;
-} CoglDisplayXlib;
+  /* This will be -1 if there is no cached config in this slot */
+  int depth;
+  gboolean found;
+  GLXFBConfig fb_config;
+  gboolean can_mipmap;
+} CoglGLXCachedConfig;
 
-#endif /* __COGL_DISPLAY_XLIB_PRIVATE_H */
+#define COGL_GLX_N_CACHED_CONFIGS 3
+
+typedef struct _CoglGLXDisplay
+{
+  CoglXlibDisplay _parent;
+
+  CoglGLXCachedConfig glx_cached_configs[COGL_GLX_N_CACHED_CONFIGS];
+
+  gboolean found_fbconfig;
+  gboolean fbconfig_has_rgba_visual;
+  GLXFBConfig fbconfig;
+
+  /* Single context for all wins */
+  GLXContext glx_context;
+  GLXWindow dummy_glxwin;
+} CoglGLXDisplay;
+
+#endif /* __COGL_DISPLAY_GLX_PRIVATE_H */

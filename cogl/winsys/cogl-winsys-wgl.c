@@ -41,6 +41,7 @@
 #include "cogl-onscreen-template-private.h"
 #include "cogl-private.h"
 #include "cogl-feature-private.h"
+#include "cogl-win32-renderer.h"
 
 typedef struct _CoglRendererWgl
 {
@@ -106,7 +107,7 @@ typedef struct _CoglOnscreenWgl
 #define COGL_WINSYS_FEATURE_BEGIN(name, namespaces, extension_names,    \
                                   feature_flags, feature_flags_private, \
                                   winsys_feature)                       \
-  { 255, 255, namespaces, extension_names,                              \
+  { 255, 255, 0, namespaces, extension_names,                            \
       feature_flags, feature_flags_private,                             \
       winsys_feature,                                                   \
       cogl_wgl_feature_ ## name ## _funcs },
@@ -166,9 +167,8 @@ find_onscreen_for_hwnd (CoglContext *context, HWND hwnd)
 }
 
 static CoglFilterReturn
-win32_event_filter_cb (void *native_event, void *data)
+win32_event_filter_cb (MSG *msg, void *data)
 {
-  MSG *msg = native_event;
   CoglContext *context = data;
 
   if (msg->message == WM_SIZE)
@@ -217,7 +217,7 @@ window_proc (HWND hwnd, UINT umsg,
      the window proc is. We want the application to forward on all
      messages through Cogl so that it can have a chance to process
      them which might mean that that in it's GetMessage loop it could
-     call cogl_renderer_handle_native_event for every message. However
+     call cogl_win32_renderer_handle_event for every message. However
      the message loop would usually call DispatchMessage as well which
      mean this window proc would be invoked and Cogl would see the
      message twice. However we can't just ignore messages in the
@@ -260,7 +260,7 @@ window_proc (HWND hwnd, UINT umsg,
       renderer = COGL_FRAMEBUFFER (onscreen)->context->display->renderer;
 
       message_handled =
-        cogl_renderer_handle_native_event (renderer, &msg);
+        cogl_win32_renderer_handle_event (renderer, &msg);
     }
 
   if (!message_handled)
@@ -513,6 +513,8 @@ get_wgl_extensions_string (HDC dc)
   const char * (APIENTRY *pf_wglGetExtensionsStringARB) (HDC);
   const char * (APIENTRY *pf_wglGetExtensionsStringEXT) (void);
 
+  _COGL_GET_CONTEXT (ctx, NULL);
+
   /* According to the docs for these two extensions, you are supposed
      to use wglGetProcAddress to detect their availability so
      presumably it will return NULL if they are not available */
@@ -534,7 +536,7 @@ get_wgl_extensions_string (HDC dc)
      extensions isn't supported then we can at least fake it to
      support the swap control extension */
   if (_cogl_check_extension ("WGL_EXT_swap_control",
-                             (char *) glGetString (GL_EXTENSIONS)))
+                             (char *) ctx->glGetString (GL_EXTENSIONS)))
     return "WGL_EXT_swap_control";
 
   return NULL;
@@ -550,7 +552,7 @@ update_winsys_features (CoglContext *context)
 
   g_return_if_fail (wgl_display->wgl_context);
 
-  _cogl_gl_update_features (context);
+  _cogl_context_update_features (context);
 
   memset (context->winsys_features, 0, sizeof (context->winsys_features));
 
@@ -568,6 +570,7 @@ update_winsys_features (CoglContext *context)
       for (i = 0; i < G_N_ELEMENTS (winsys_feature_data); i++)
         if (_cogl_feature_check (_cogl_context_get_winsys (context),
                                  "WGL", winsys_feature_data + i, 0, 0,
+                                 COGL_DRIVER_GL,
                                  wgl_extensions,
                                  wgl_renderer))
           {
@@ -587,9 +590,9 @@ _cogl_winsys_context_init (CoglContext *context, GError **error)
 
   wgl_context = context->winsys = g_new0 (CoglContextWgl, 1);
 
-  cogl_renderer_add_native_filter (context->display->renderer,
-                                   win32_event_filter_cb,
-                                   context);
+  cogl_win32_renderer_add_filter (context->display->renderer,
+                                  win32_event_filter_cb,
+                                  context);
 
   update_winsys_features (context);
 
@@ -599,9 +602,9 @@ _cogl_winsys_context_init (CoglContext *context, GError **error)
 static void
 _cogl_winsys_context_deinit (CoglContext *context)
 {
-  cogl_renderer_remove_native_filter (context->display->renderer,
-                                      win32_event_filter_cb,
-                                      context);
+  cogl_win32_renderer_remove_filter (context->display->renderer,
+                                     win32_event_filter_cb,
+                                     context);
 
   g_free (context->winsys);
 }
@@ -827,6 +830,7 @@ _cogl_winsys_wgl_get_vtable (void)
     {
       memset (&vtable, 0, sizeof (vtable));
 
+      vtable.id = COGL_WINSYS_ID_EGL;
       vtable.name = "WGL";
       vtable.get_proc_address = _cogl_winsys_get_proc_address;
       vtable.renderer_connect = _cogl_winsys_renderer_connect;

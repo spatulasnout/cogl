@@ -28,6 +28,9 @@ AM_CPPFLAGS = \
 	-DG_DISABLE_DEPRECATED		\
 	-DG_LOG_DOMAIN=\"Cogl\" 	\
 	-DCLUTTER_COMPILATION		\
+	-DCOGL_GL_LIBNAME=\"$(COGL_GL_LIBNAME)\" \
+	-DCOGL_GLES1_LIBNAME=\"$(COGL_GLES1_LIBNAME)\" \
+	-DCOGL_GLES2_LIBNAME=\"$(COGL_GLES2_LIBNAME)\" \
 	$(NULL)
 
 AM_CFLAGS = $(COGL_DEP_CFLAGS) $(COGL_EXTRA_CFLAGS) $(MAINTAINER_CFLAGS)
@@ -102,24 +105,19 @@ cogl_experimental_h = \
 # driver sources
 cogl_driver_sources =
 
-if COGL_DRIVER_GL
+if COGL_DRIVER_GL_SUPPORTED
 cogl_driver_sources += \
-	$(srcdir)/driver/gl/cogl-feature-functions-gl.h	\
 	$(srcdir)/driver/gl/cogl-gl.c			\
 	$(srcdir)/driver/gl/cogl-texture-driver-gl.c	\
-	$(srcdir)/driver/gl/cogl-context-driver-gl.h	\
 	$(NULL)
 endif
 
-if COGL_DRIVER_GLES
+if COGL_DRIVER_GLES_SUPPORTED
 cogl_driver_sources += \
-	$(srcdir)/driver/gles/cogl-feature-functions-gles.h	\
 	$(srcdir)/driver/gles/cogl-gles.c			\
 	$(srcdir)/driver/gles/cogl-texture-driver-gles.c	\
-	$(srcdir)/driver/gles/cogl-context-driver-gles.h	\
 	$(NULL)
-
-endif # COGL_DRIVER_GLES
+endif
 
 # winsys sources, common to all backends
 cogl_winsys_common_sources = \
@@ -210,6 +208,7 @@ cogl_sources_c = \
 	$(srcdir)/cogl-clip-state.c			\
 	$(srcdir)/cogl2-clip-state.h 			\
 	$(srcdir)/cogl2-clip-state.c 			\
+	$(srcdir)/cogl-ext-functions.h			\
 	$(srcdir)/cogl-feature-private.h                \
 	$(srcdir)/cogl-feature-private.c                \
 	$(srcdir)/cogl-fixed.c		    		\
@@ -290,8 +289,6 @@ cogl_sources_c = \
 	$(srcdir)/cogl-journal.c			\
 	$(srcdir)/cogl-framebuffer-private.h		\
 	$(srcdir)/cogl-framebuffer.c 			\
-	$(srcdir)/cogl-matrix-mesa.h 			\
-	$(srcdir)/cogl-matrix-mesa.c 			\
 	$(srcdir)/cogl-profile.h 			\
 	$(srcdir)/cogl-profile.c 			\
 	$(srcdir)/cogl-flags.h				\
@@ -305,19 +302,23 @@ cogl_sources_c = \
 	$(srcdir)/cogl-point-in-poly.c       		\
 	$(srcdir)/cogl-clutter.c       			\
 	$(srcdir)/winsys/cogl-winsys-stub-private.h	\
+	$(srcdir)/cogl-queue.h				\
 	$(srcdir)/winsys/cogl-winsys-stub.c		\
 	$(NULL)
 
 if SUPPORT_XLIB
+cogl_public_h += \
+	$(srcdir)/cogl-xlib-renderer.h
+
 cogl_experimental_h += \
        $(srcdir)/winsys/cogl-texture-pixmap-x11.h \
        $(srcdir)/cogl-xlib.h
 
 cogl_sources_c += \
-	$(srcdir)/cogl-renderer-x11-private.h \
-	$(srcdir)/cogl-renderer-xlib-private.h \
-	$(srcdir)/cogl-renderer-xlib.c \
-	$(srcdir)/cogl-display-xlib-private.h \
+	$(srcdir)/cogl-x11-renderer-private.h \
+	$(srcdir)/cogl-xlib-renderer-private.h \
+	$(srcdir)/cogl-xlib-renderer.c \
+	$(srcdir)/cogl-xlib-display-private.h \
 	$(srcdir)/cogl-xlib.c \
 	$(srcdir)/cogl-xlib-private.h \
 	$(srcdir)/winsys/cogl-texture-pixmap-x11.c \
@@ -325,39 +326,28 @@ cogl_sources_c += \
 endif
 if SUPPORT_GLX
 cogl_sources_c += \
-	$(srcdir)/cogl-renderer-glx-private.h \
-	$(srcdir)/cogl-display-glx-private.h \
+	$(srcdir)/cogl-glx-renderer-private.h \
+	$(srcdir)/cogl-glx-display-private.h \
 	$(srcdir)/winsys/cogl-winsys-glx-feature-functions.h \
 	$(srcdir)/winsys/cogl-winsys-glx.c
 endif
 if SUPPORT_WGL
+cogl_public_h += \
+	$(srcdir)/cogl-win32-renderer.h
+
 cogl_sources_c += \
+	$(srcdir)/cogl-win32-renderer.c \
 	$(srcdir)/winsys/cogl-winsys-wgl.c \
 	$(srcdir)/winsys/cogl-winsys-wgl-feature-functions.h
 endif
-if SUPPORT_EGL_PLATFORM_POWERVR_X11
-cogl_sources_c += \
-	$(srcdir)/winsys/cogl-winsys-egl.c \
-	$(srcdir)/winsys/cogl-winsys-egl-private.h
-endif
-if SUPPORT_EGL_PLATFORM_POWERVR_NULL
-cogl_sources_c += \
-       $(srcdir)/winsys/cogl-winsys-egl.c \
-       $(srcdir)/winsys/cogl-winsys-egl-private.h
-endif
-if SUPPORT_EGL_PLATFORM_GDL
-cogl_sources_c += \
-       $(srcdir)/winsys/cogl-winsys-egl.c \
-       $(srcdir)/winsys/cogl-winsys-egl-private.h
-endif
 if SUPPORT_EGL_PLATFORM_WAYLAND
-cogl_sources_c += \
-       $(srcdir)/winsys/cogl-winsys-egl.c \
-       $(srcdir)/winsys/cogl-winsys-egl-private.h
+cogl_public_h += \
+	$(srcdir)/cogl-wayland-renderer.h
 endif
-if SUPPORT_EGL_PLATFORM_ANDROID
+if SUPPORT_EGL
 cogl_sources_c += \
        $(srcdir)/winsys/cogl-winsys-egl.c \
+       $(srcdir)/winsys/cogl-winsys-egl-feature-functions.h \
        $(srcdir)/winsys/cogl-winsys-egl-private.h
 endif
 
@@ -381,7 +371,7 @@ libcogl_la_LDFLAGS = \
 	-no-undefined \
 	-version-info @COGL_LT_CURRENT@:@COGL_LT_REVISION@:@COGL_LT_AGE@ \
 	-export-dynamic \
-	-export-symbols-regex "^(cogl|_cogl_debug_flags|_cogl_atlas_new|_cogl_atlas_add_reorganize_callback|_cogl_atlas_reserve_space|_cogl_callback|_cogl_util_get_eye_planes_for_screen_poly|_cogl_atlas_texture_remove_reorganize_callback|_cogl_atlas_texture_add_reorganize_callback|_cogl_texture_foreach_sub_texture_in_region|_cogl_atlas_texture_new_with_size|_cogl_profile_trace_message).*"
+	-export-symbols-regex "^(cogl|_cogl_debug_flags|_cogl_atlas_new|_cogl_atlas_add_reorganize_callback|_cogl_atlas_reserve_space|_cogl_callback|_cogl_util_get_eye_planes_for_screen_poly|_cogl_atlas_texture_remove_reorganize_callback|_cogl_atlas_texture_add_reorganize_callback|_cogl_texture_foreach_sub_texture_in_region|_cogl_atlas_texture_new_with_size|_cogl_profile_trace_message|_cogl_context_get_default).*"
 
 libcogl_la_SOURCES = $(cogl_sources_c)
 nodist_libcogl_la_SOURCES = $(BUILT_SOURCES)

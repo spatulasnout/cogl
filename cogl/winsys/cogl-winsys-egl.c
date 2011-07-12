@@ -39,8 +39,8 @@
 #include "cogl-renderer-private.h"
 #include "cogl-onscreen-template-private.h"
 #ifdef COGL_HAS_EGL_PLATFORM_POWERVR_X11_SUPPORT
-#include "cogl-renderer-xlib-private.h"
-#include "cogl-display-xlib-private.h"
+#include "cogl-xlib-renderer-private.h"
+#include "cogl-xlib-display-private.h"
 #endif
 
 #ifdef COGL_HAS_XLIB_SUPPORT
@@ -82,7 +82,7 @@ typedef enum _CoglEGLWinsysFeature
 typedef struct _CoglRendererEGL
 {
 #ifdef COGL_HAS_EGL_PLATFORM_POWERVR_X11_SUPPORT
-  CoglRendererXlib _parent;
+  CoglXlibRenderer _parent;
 #endif
 
   CoglEGLWinsysFeature private_features;
@@ -120,7 +120,7 @@ typedef struct _CoglRendererEGL
 typedef struct _CoglDisplayEGL
 {
 #ifdef COGL_HAS_EGL_PLATFORM_POWERVR_X11_SUPPORT
-  CoglDisplayXlib _parent;
+  CoglXlibDisplay _parent;
 #endif
 
   EGLContext egl_context;
@@ -197,7 +197,7 @@ typedef struct _CoglTexturePixmapEGL
 #undef COGL_WINSYS_FEATURE_BEGIN
 #define COGL_WINSYS_FEATURE_BEGIN(name, namespaces, extension_names,    \
                                   egl_private_flags)                    \
-  { 255, 255, namespaces, extension_names,                              \
+  { 255, 255, 0, namespaces, extension_names,                           \
       0, egl_private_flags,                                             \
       0,                                                                \
       cogl_egl_feature_ ## name ## _funcs },
@@ -223,6 +223,8 @@ static ANativeWindow *android_native_window;
 void
 cogl_android_set_native_window (ANativeWindow *window)
 {
+  _cogl_init ();
+
   android_native_window = window;
 }
 #endif
@@ -250,9 +252,8 @@ find_onscreen_for_xid (CoglContext *context, guint32 xid)
 }
 
 static CoglFilterReturn
-event_filter_cb (void *event, void *data)
+event_filter_cb (XEvent *xevent, void *data)
 {
-  XEvent *xevent = event;
   CoglContext *context = data;
 
   if (xevent->type == ConfigureNotify)
@@ -285,7 +286,7 @@ _cogl_winsys_renderer_disconnect (CoglRenderer *renderer)
 #endif
 
 #ifdef COGL_HAS_EGL_PLATFORM_POWERVR_X11_SUPPORT
-  _cogl_renderer_xlib_disconnect (renderer);
+  _cogl_xlib_renderer_disconnect (renderer);
 #endif
 
   eglTerminate (egl_renderer->edpy);
@@ -353,11 +354,12 @@ check_egl_extensions (CoglRenderer *renderer)
   for (i = 0; i < G_N_ELEMENTS (winsys_feature_data); i++)
     if (_cogl_feature_check (winsys,
                              "EGL", winsys_feature_data + i, 0, 0,
+                             COGL_DRIVER_GL, /* the driver isn't used */
                              egl_extensions,
                              egl_renderer))
       {
         egl_renderer->private_features |=
-          winsys_feature_data[0].feature_flags_private;
+          winsys_feature_data[i].feature_flags_private;
       }
 }
 
@@ -367,7 +369,7 @@ _cogl_winsys_renderer_connect (CoglRenderer *renderer,
 {
   CoglRendererEGL *egl_renderer;
 #ifdef COGL_HAS_EGL_PLATFORM_POWERVR_X11_SUPPORT
-  CoglRendererXlib *xlib_renderer;
+  CoglXlibRenderer *xlib_renderer;
 #endif
   EGLBoolean status;
 #ifdef COGL_HAS_EGL_PLATFORM_GDL_SUPPORT
@@ -381,7 +383,7 @@ _cogl_winsys_renderer_connect (CoglRenderer *renderer,
 #ifdef COGL_HAS_EGL_PLATFORM_POWERVR_X11_SUPPORT
   xlib_renderer = renderer->winsys;
 
-  if (!_cogl_renderer_xlib_connect (renderer, error))
+  if (!_cogl_xlib_renderer_connect (renderer, error))
     goto error;
 
   egl_renderer->edpy =
@@ -513,7 +515,7 @@ update_winsys_features (CoglContext *context)
 
   check_egl_extensions (context->display->renderer);
 
-  _cogl_gl_update_features (context);
+  _cogl_context_update_features (context);
 
 #if defined (COGL_HAS_EGL_PLATFORM_POWERVR_X11_SUPPORT) || \
     defined (COGL_HAS_EGL_PLATFORM_WAYLAND_SUPPORT)
@@ -536,7 +538,7 @@ update_winsys_features (CoglContext *context)
 static XVisualInfo *
 get_visual_info (CoglDisplay *display, EGLConfig egl_config)
 {
-  CoglRendererXlib *xlib_renderer = display->renderer->winsys;
+  CoglXlibRenderer *xlib_renderer = display->renderer->winsys;
   CoglRendererEGL *egl_renderer = display->renderer->winsys;
   XVisualInfo visinfo_template;
   int template_mask = 0;
@@ -590,8 +592,8 @@ try_create_context (CoglDisplay *display,
 {
   CoglDisplayEGL *egl_display = display->winsys;
 #ifdef COGL_HAS_EGL_PLATFORM_POWERVR_X11_SUPPORT
-  CoglDisplayXlib *xlib_display = display->winsys;
-  CoglRendererXlib *xlib_renderer = display->renderer->winsys;
+  CoglXlibDisplay *xlib_display = display->winsys;
+  CoglXlibRenderer *xlib_renderer = display->renderer->winsys;
 #endif
   CoglRendererEGL *egl_renderer = display->renderer->winsys;
   EGLDisplay edpy;
@@ -618,23 +620,17 @@ try_create_context (CoglDisplay *display,
 
     EGL_BUFFER_SIZE,     EGL_DONT_CARE,
 
-#if defined (HAVE_COGL_GL)
-    EGL_RENDERABLE_TYPE, EGL_OPENGL_BIT,
-#elif defined (HAVE_COGL_GLES2)
-    EGL_RENDERABLE_TYPE, EGL_OPENGL_ES2_BIT,
-#else
-    EGL_RENDERABLE_TYPE, EGL_OPENGL_ES_BIT,
-#endif
+    EGL_RENDERABLE_TYPE, (display->renderer->driver == COGL_DRIVER_GL ?
+                          EGL_OPENGL_BIT :
+                          display->renderer->driver == COGL_DRIVER_GLES1 ?
+                          EGL_OPENGL_ES_BIT :
+                          EGL_OPENGL_ES2_BIT),
 
     EGL_SURFACE_TYPE,    EGL_WINDOW_BIT,
 
     EGL_NONE
   };
-#if defined (HAVE_COGL_GLES2)
-  EGLint attribs[] = { EGL_CONTEXT_CLIENT_VERSION, 2, EGL_NONE };
-#else
-  EGLint *attribs = NULL;
-#endif
+  EGLint attribs[3];
 
 #ifdef COGL_HAS_EGL_PLATFORM_POWERVR_X11_SUPPORT
   XVisualInfo *xvisinfo;
@@ -645,11 +641,19 @@ try_create_context (CoglDisplay *display,
 #endif
   const char *error_message;
 
+  if (display->renderer->driver == COGL_DRIVER_GLES2)
+    {
+      attribs[0] = EGL_CONTEXT_CLIENT_VERSION;
+      attribs[1] = 2;
+      attribs[2] = EGL_NONE;
+    }
+  else
+    attribs[0] = EGL_NONE;
+
   edpy = egl_renderer->edpy;
 
-#ifdef HAVE_COGL_GL
-  eglBindAPI (EGL_OPENGL_API);
-#endif
+  if (display->renderer->driver == COGL_DRIVER_GL)
+    eglBindAPI (EGL_OPENGL_API);
 
   /* Some GLES hardware can't support a stencil buffer: */
   if (retry_cookie == 1)
@@ -891,8 +895,8 @@ cleanup_context (CoglDisplay *display)
   CoglDisplayEGL *egl_display = display->winsys;
   CoglRendererEGL *egl_renderer = display->renderer->winsys;
 #ifdef COGL_HAS_EGL_PLATFORM_POWERVR_X11_SUPPORT
-  CoglDisplayXlib *xlib_display = display->winsys;
-  CoglRendererXlib *xlib_renderer = display->renderer->winsys;
+  CoglXlibDisplay *xlib_display = display->winsys;
+  CoglXlibRenderer *xlib_renderer = display->renderer->winsys;
 #endif
 
   if (egl_display->egl_context != EGL_NO_CONTEXT)
@@ -1106,9 +1110,9 @@ _cogl_winsys_context_init (CoglContext *context, GError **error)
   context->winsys = g_new0 (CoglContextEGL, 1);
 
 #ifdef COGL_HAS_EGL_PLATFORM_POWERVR_X11_SUPPORT
-  cogl_renderer_add_native_filter (context->display->renderer,
-                                   event_filter_cb,
-                                   context);
+  cogl_xlib_renderer_add_filter (context->display->renderer,
+                                 event_filter_cb,
+                                 context);
 #endif
   update_winsys_features (context);
 
@@ -1119,9 +1123,9 @@ static void
 _cogl_winsys_context_deinit (CoglContext *context)
 {
 #ifdef COGL_HAS_EGL_PLATFORM_POWERVR_X11_SUPPORT
-  cogl_renderer_remove_native_filter (context->display->renderer,
-                                      event_filter_cb,
-                                      context);
+  cogl_xlib_renderer_remove_filter (context->display->renderer,
+                                    event_filter_cb,
+                                    context);
 #endif
   g_free (context->winsys);
 }
@@ -1136,7 +1140,7 @@ _cogl_winsys_onscreen_init (CoglOnscreen *onscreen,
   CoglDisplayEGL *egl_display = display->winsys;
 #ifdef COGL_HAS_EGL_PLATFORM_POWERVR_X11_SUPPORT
   CoglRendererEGL *egl_renderer = display->renderer->winsys;
-  CoglRendererXlib *xlib_renderer = display->renderer->winsys;
+  CoglXlibRenderer *xlib_renderer = display->renderer->winsys;
   CoglOnscreenXlib *xlib_onscreen;
   Window xwin;
 #endif
@@ -1170,10 +1174,10 @@ _cogl_winsys_onscreen_init (CoglOnscreen *onscreen,
 
       xwin = onscreen->foreign_xid;
 
-      _cogl_renderer_xlib_trap_errors (display->renderer, &state);
+      _cogl_xlib_renderer_trap_errors (display->renderer, &state);
 
       status = XGetWindowAttributes (xlib_renderer->xdpy, xwin, &attr);
-      xerror = _cogl_renderer_xlib_untrap_errors (display->renderer, &state);
+      xerror = _cogl_xlib_renderer_untrap_errors (display->renderer, &state);
       if (status == 0 || xerror)
         {
           char message[1000];
@@ -1207,7 +1211,7 @@ _cogl_winsys_onscreen_init (CoglOnscreen *onscreen,
       width = cogl_framebuffer_get_width (framebuffer);
       height = cogl_framebuffer_get_height (framebuffer);
 
-      _cogl_renderer_xlib_trap_errors (display->renderer, &state);
+      _cogl_xlib_renderer_trap_errors (display->renderer, &state);
 
       xvisinfo = get_visual_info (display, egl_display->egl_config);
       if (xvisinfo == NULL)
@@ -1245,7 +1249,7 @@ _cogl_winsys_onscreen_init (CoglOnscreen *onscreen,
       XFree (xvisinfo);
 
       XSync (xlib_renderer->xdpy, False);
-      xerror = _cogl_renderer_xlib_untrap_errors (display->renderer, &state);
+      xerror = _cogl_xlib_renderer_untrap_errors (display->renderer, &state);
       if (xerror)
         {
           char message[1000];
@@ -1340,7 +1344,7 @@ _cogl_winsys_onscreen_deinit (CoglOnscreen *onscreen)
   CoglFramebuffer *framebuffer = COGL_FRAMEBUFFER (onscreen);
   CoglContext *context = framebuffer->context;
 #ifdef COGL_HAS_EGL_PLATFORM_POWERVR_X11_SUPPORT
-  CoglRendererXlib *xlib_renderer = context->display->renderer->winsys;
+  CoglXlibRenderer *xlib_renderer = context->display->renderer->winsys;
   CoglXlibTrapState old_state;
   CoglOnscreenXlib *xlib_onscreen = onscreen->winsys;
 #elif defined (COGL_HAS_EGL_PLATFORM_POWERVR_NULL_SUPPORT)
@@ -1366,7 +1370,7 @@ _cogl_winsys_onscreen_deinit (CoglOnscreen *onscreen)
 #endif
 
 #ifdef COGL_HAS_EGL_PLATFORM_POWERVR_X11_SUPPORT
-  _cogl_renderer_xlib_trap_errors (context->display->renderer, &old_state);
+  _cogl_xlib_renderer_trap_errors (context->display->renderer, &old_state);
 
   if (!xlib_onscreen->is_foreign_xwin && xlib_onscreen->xwin != None)
     {
@@ -1378,7 +1382,7 @@ _cogl_winsys_onscreen_deinit (CoglOnscreen *onscreen)
 
   XSync (xlib_renderer->xdpy, False);
 
-  if (_cogl_renderer_xlib_untrap_errors (context->display->renderer,
+  if (_cogl_xlib_renderer_untrap_errors (context->display->renderer,
                                          &old_state) != Success)
     g_warning ("X Error while destroying X window");
 #endif
@@ -1466,7 +1470,7 @@ _cogl_winsys_onscreen_set_visibility (CoglOnscreen *onscreen,
                                       gboolean visibility)
 {
   CoglContext *context = COGL_FRAMEBUFFER (onscreen)->context;
-  CoglRendererXlib *xlib_renderer = context->display->renderer->winsys;
+  CoglXlibRenderer *xlib_renderer = context->display->renderer->winsys;
   CoglOnscreenXlib *xlib_onscreen = onscreen->winsys;
 
   if (visibility)
@@ -1552,13 +1556,16 @@ _cogl_winsys_texture_pixmap_x11_create (CoglTexturePixmapX11 *tex_pixmap)
   CoglTexturePixmapEGL *egl_tex_pixmap;
   EGLint attribs[] = {EGL_IMAGE_PRESERVED_KHR, EGL_TRUE, EGL_NONE};
   CoglPixelFormat texture_format;
+  CoglRendererEGL *egl_renderer;
 
   /* FIXME: It should be possible to get to a CoglContext from any
    * CoglTexture pointer. */
   _COGL_GET_CONTEXT (ctx, FALSE);
 
-  if (!(ctx->private_feature_flags &
-        COGL_PRIVATE_FEATURE_EGL_IMAGE_FROM_X11_PIXMAP) ||
+  egl_renderer = ctx->display->renderer->winsys;
+
+  if (!(egl_renderer->private_features &
+        COGL_EGL_WINSYS_FEATURE_EGL_IMAGE_FROM_X11_PIXMAP) ||
       !(ctx->private_feature_flags &
         COGL_PRIVATE_FEATURE_TEXTURE_2D_FROM_EGL_IMAGE))
     {
@@ -1644,6 +1651,7 @@ _cogl_winsys_texture_pixmap_x11_get_texture (CoglTexturePixmapX11 *tex_pixmap)
 
 static CoglWinsysVtable _cogl_winsys_vtable =
   {
+    .id = COGL_WINSYS_ID_EGL,
     .name = "EGL",
     .get_proc_address = _cogl_winsys_get_proc_address,
     .renderer_connect = _cogl_winsys_renderer_connect,
@@ -1707,7 +1715,7 @@ _cogl_winsys_egl_get_vtable (void)
  * points... */
 #ifdef COGL_HAS_EGL_PLATFORM_WAYLAND_SUPPORT
 void
-cogl_renderer_wayland_set_foreign_display (CoglRenderer *renderer,
+cogl_wayland_renderer_set_foreign_display (CoglRenderer *renderer,
                                            struct wl_display *display)
 {
   g_return_if_fail (cogl_is_renderer (renderer));
@@ -1719,7 +1727,7 @@ cogl_renderer_wayland_set_foreign_display (CoglRenderer *renderer,
 }
 
 struct wl_display *
-cogl_renderer_wayland_get_display (CoglRenderer *renderer)
+cogl_wayland_renderer_get_display (CoglRenderer *renderer)
 {
   g_return_val_if_fail (cogl_is_renderer (renderer), NULL);
 
@@ -1735,7 +1743,7 @@ cogl_renderer_wayland_get_display (CoglRenderer *renderer)
 }
 
 void
-cogl_renderer_wayland_set_foreign_compositor (CoglRenderer *renderer,
+cogl_wayland_renderer_set_foreign_compositor (CoglRenderer *renderer,
                                               struct wl_compositor *compositor)
 {
   g_return_if_fail (cogl_is_renderer (renderer));
@@ -1747,7 +1755,7 @@ cogl_renderer_wayland_set_foreign_compositor (CoglRenderer *renderer,
 }
 
 struct wl_compositor *
-cogl_renderer_wayland_get_compositor (CoglRenderer *renderer)
+cogl_wayland_renderer_get_compositor (CoglRenderer *renderer)
 {
   g_return_val_if_fail (cogl_is_renderer (renderer), NULL);
 

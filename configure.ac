@@ -25,7 +25,7 @@ m4_define([cogl_version],
 dnl Since the core Cogl library has to also maintain support for the
 dnl Cogl 1.x API for Clutter then we track the 1.x version separately.
 m4_define([cogl_1_minor_version], [7])
-m4_define([cogl_1_micro_version], [1])
+m4_define([cogl_1_micro_version], [3])
 m4_define([cogl_1_version], [1.cogl_1_minor_version.cogl_1_micro_version])
 
 dnl ================================================================
@@ -55,7 +55,7 @@ dnl ================================================================
 #
 #  5. If any interfaces have been removed since the last public release,
 #     then set AGE to 0.
-m4_define([cogl_lt_current], 0)
+m4_define([cogl_lt_current], 1)
 m4_define([cogl_lt_revision], 0)
 m4_define([cogl_lt_age], 0)
 # We do also tell libtool the pretty version:
@@ -72,6 +72,11 @@ dnl ================================================================
 # updating the version number in advance of a release.
 m4_define([cogl_release_status], [git])
 
+AC_INIT(cogl, [cogl_1_version])
+AC_CONFIG_SRCDIR(cogl/cogl.h)
+AC_CONFIG_AUX_DIR([build])
+AC_CONFIG_MACRO_DIR([build/autotools])
+AC_CONFIG_HEADERS(config.h)
 
 dnl ================================================================
 dnl Required versions for dependencies
@@ -84,13 +89,18 @@ m4_define([uprof_req_version],          [0.3])
 m4_define([gtk_doc_req_version],        [1.13])
 m4_define([xfixes_req_version],         [3])
 m4_define([xcomposite_req_version],     [0.4])
+m4_define([cairo_req_version],          [1.10])
 
-
-AC_INIT(cogl, [cogl_1_version])
-AC_CONFIG_SRCDIR(cogl/cogl.h)
-AC_CONFIG_AUX_DIR([build])
-AC_CONFIG_MACRO_DIR([build/autotools])
-AC_CONFIG_HEADERS(config.h)
+dnl These variables get copied into the generated README
+AC_SUBST([GLIB_REQ_VERSION], [glib_req_version])
+AC_SUBST([GDK_PIXBUF_REQ_VERSION], [gdk_pixbuf_req_version])
+AC_SUBST([CAIRO_REQ_VERSION], [cairo_req_version])
+AC_SUBST([PANGOCAIRO_REQ_VERSION], [pangocairo_req_version])
+AC_SUBST([XCOMPOSITE_REQ_VERSION], [xcomposite_req_version])
+AC_SUBST([XFIXES_REQ_VERSION], [xfixes_req_version])
+AC_SUBST([GTK_DOC_REQ_VERSION], [gtk_doc_req_version])
+AC_SUBST([GI_REQ_VERSION], [gi_req_version])
+AC_SUBST([UPROF_REQ_VERSION], [uprof_req_version])
 
 # Save this value here, since automake will set cflags later and we
 # want to know if the user specified custom cflags or not.
@@ -159,12 +169,12 @@ dnl ================================================================
 dnl     ============================================================
 dnl     Enable debugging
 dnl     ============================================================
-m4_define([default], [m4_if(cogl_release_status, [git], [yes], [no])])
+m4_define([debug_default], [m4_if(cogl_release_status, [git], [yes], [no])])
 AC_ARG_ENABLE(
   [debug],
-  [AC_HELP_STRING([--enable-debug=@<:@no/yes@:>@], [Control Cogl debugging level @<:@default=]default[@:>@])],
+  [AC_HELP_STRING([--enable-debug=@<:@no/yes@:>@], [Control Cogl debugging level @<:@default=]debug_default[@:>@])],
   [],
-  enable_debug=default
+  enable_debug=debug_default
 )
 AS_CASE(
   [$enable_debug],
@@ -188,7 +198,7 @@ dnl     Enable cairo usage for debugging
 dnl       (debugging code can use cairo to dump the atlas)
 dnl     ============================================================
 
-PKG_CHECK_EXISTS([CAIRO], [cairo], [have_cairo=yes])
+PKG_CHECK_EXISTS([CAIRO], [cairo >= cairo_req_version], [have_cairo=yes])
 AC_ARG_ENABLE(
   [cairo],
   [AC_HELP_STRING([--enable-cairo=@<:@no/yes@:>@], [Control Cairo usage in Cogl debugging code @<:@default=auto@:>@])],
@@ -204,7 +214,7 @@ AS_IF([test "x$enable_cairo" = "xyes" && test "x$enable_debug" = "xyes"],
         AS_IF([test "x$have_cairo" != "xyes"],
               [AC_MSG_ERROR([Could not find Cairo])])
 
-        COGL_PKG_REQUIRES="$COGL_PKG_REQUIRES cairo"
+        COGL_PKG_REQUIRES="$COGL_PKG_REQUIRES cairo >= cairo_req_version"
         AC_DEFINE([HAVE_CAIRO], [1], [Whether we have cairo or not])
       ])
 
@@ -238,12 +248,12 @@ dnl     ============================================================
 
 # use strict compiler flags only when building from git; the rules for
 # distcheck will take care of turning this on when making a release
-m4_define([default], [m4_if(cogl_release_status, [git], [yes], [no])])
+m4_define([maintainer_default], [m4_if(cogl_release_status, [git], [yes], [no])])
 AC_ARG_ENABLE(
   [maintainer-flags],
-  [AC_HELP_STRING([--enable-maintainer-flags=@<:@no/yes/error@:>@], [Use strict compiler flags @<:@default=]default[@:>@])],
+  [AC_HELP_STRING([--enable-maintainer-flags=@<:@no/yes/error@:>@], [Use strict compiler flags @<:@default=]maintainer_default[@:>@])],
   [],
-  enable_maintainer_flags=default
+  enable_maintainer_flags=maintainer_default
 )
 
 MAINTAINER_COMPILER_FLAGS="-Wall -Wcast-align -Wuninitialized
@@ -346,8 +356,15 @@ dnl     ============================================================
 dnl         ========================================================
 dnl         Drivers first...
 dnl         ========================================================
-DRIVER_COUNT=0
 EGL_CHECKED=no
+
+dnl This gets set to yes if Cogl directly links to the GL library API
+dnl so it doesn't need to be dlopened. This currently happens on OSX
+dnl and WGL where it's not clear if window system API can be separated
+dnl from the GL API.
+GL_LIBRARY_DIRECTLY_LINKED=no
+
+enabled_drivers=""
 
 AC_ARG_ENABLE(
   [gles1],
@@ -360,9 +377,7 @@ AS_IF([test "x$enable_gles1" = "xyes"],
         AS_IF([test "x$platform_win32" = "xyes"],
 	      [AC_MSG_ERROR([GLES 1 not available for win32])])
 
-        DRIVER_COUNT=$((DRIVER_COUNT + 1))
-        COGL_DRIVER=gles
-        glesversion=1.1
+        enabled_drivers="$enabled_drivers gles1"
 
         cogl_gl_headers="GLES/gl.h GLES/glext.h"
 
@@ -371,7 +386,8 @@ AS_IF([test "x$enable_gles1" = "xyes"],
         COGL_DEFINES_SYMBOLS="$COGL_DEFINES_SYMBOLS COGL_HAS_GLES1"
 
         PKG_CHECK_EXISTS([glesv1_cm],
-          [COGL_PKG_REQUIRES="$COGL_PKG_REQUIRES glesv1_cm"
+          [COGL_PKG_REQUIRES_GL="$COGL_PKG_REQUIRES_GL glesv1_cm"
+           COGL_GLES1_LIBNAME="GLESv1_CM"
            NEED_EGL=yes
           ],
           [
@@ -414,10 +430,10 @@ AS_IF([test "x$enable_gles1" = "xyes"],
             # bundles the GLES and EGL API together and -lGLESv1_CM
             # would be used for a standalone GLES API.
             AC_CHECK_LIB(GLES_CM, [eglInitialize],
-              [COGL_EXTRA_LDFLAGS="$COGL_EXTRA_LDFLAGS -lGLES_CM"],
+              [COGL_GLES1_LIBNAME="GLES_CM"],
               [
                 AC_CHECK_LIB(GLESv1_CM, [glFlush],
-                  [COGL_EXTRA_LDFLAGS="$COGL_EXTRA_LDFLAGS -lGLESv1_CM"
+                  [COGL_GLES1_LIBNAME="GLESv1_CM"
                    NEED_SEPARATE_EGL=yes
                   ],
                   [AC_MSG_ERROR([Unable to locate required GLES 1.x Common Profile library])])
@@ -438,9 +454,7 @@ AS_IF([test "x$enable_gles2" = "xyes"],
         AS_IF([test "x$platform_win32" = "xyes"],
 	      [AC_MSG_ERROR([GLES 2 not available for win32])])
 
-        DRIVER_COUNT=$((DRIVER_COUNT + 1))
-        COGL_DRIVER=gles
-        glesversion=2.0
+        enabled_drivers="$enabled_drivers gles2"
 
         cogl_gl_headers="GLES2/gl2.h GLES2/gl2ext.h"
         AC_DEFINE([HAVE_COGL_GLES2], 1, [Have GLES 2.0 for rendering])
@@ -448,7 +462,9 @@ AS_IF([test "x$enable_gles2" = "xyes"],
         COGL_DEFINES_SYMBOLS="$COGL_DEFINES_SYMBOLS COGL_HAS_GLES2"
 
         PKG_CHECK_EXISTS([glesv2],
-          [COGL_PKG_REQUIRES="$COGL_PKG_REQUIRES glesv2"],
+          [COGL_PKG_REQUIRES_GL="$COGL_PKG_REQUIRES_GL glesv2"
+           COGL_GLES2_LIBNAME="GLESv2"
+          ],
           [
             # We have to check the two headers independently as GLES2/gl2ext.h
             # needs to include GLES2/gl2.h to have the GL types defined (eg.
@@ -461,7 +477,7 @@ AS_IF([test "x$enable_gles2" = "xyes"],
                             [AC_MSG_ERROR([Unable to locate GLES2/gl2ext.h])],
                             [#include <GLES2/gl2.h>])
 
-            COGL_EXTRA_LDFLAGS="$COGL_EXTRA_LDFLAGS -lGLESv2"
+            COGL_GLES2_LIBNAME="GLESv2"
           ])
 
         NEED_EGL=yes
@@ -471,12 +487,11 @@ AC_ARG_ENABLE(
   [gl],
   [AC_HELP_STRING([--enable-gl=@<:@no/yes@:>@], [Enable support for OpenGL @<:@default=yes@:>@])],
   [],
-  [AS_IF([test $DRIVER_COUNT -gt 0], [enable_gl=no], [enable_gl=yes])]
+  [enable_gl=yes]
 )
 AS_IF([test "x$enable_gl" = "xyes"],
       [
-        DRIVER_COUNT=$((DRIVER_COUNT + 1))
-        COGL_DRIVER=gl
+        enabled_drivers="$enabled_drivers gl"
 
         PKG_CHECK_EXISTS([x11], [ALLOW_GLX=yes])
 
@@ -486,6 +501,10 @@ AS_IF([test "x$enable_gl" = "xyes"],
               [
                 cogl_gl_headers="OpenGL/gl.h"
                 COGL_EXTRA_LDFLAGS="$COGL_EXTRA_LDFLAGS -framework OpenGL"
+                dnl The GL API is being directly linked in so there is
+                dnl no need to dlopen it separately
+                GL_LIBRARY_DIRECTLY_LINKED=yes
+                COGL_GL_LIBNAME=""
               ],
 
               [test "x$platform_win32" = "xyes"],
@@ -493,15 +512,22 @@ AS_IF([test "x$enable_gl" = "xyes"],
 		COGL_EXTRA_LDFLAGS="$COGL_EXTRA_LDFLAGS -lopengl32 -lgdi32 -lwinmm"
 		COGL_EXTRA_CFLAGS="$COGL_EXTRA_CFLAGS -D_WIN32_WINNT=0x0500"
                 ALLOW_WGL=yes
+                dnl The GL API is being directly linked in so there is
+                dnl no need to dlopen it separately
+                GL_LIBRARY_DIRECTLY_LINKED=yes
+                COGL_GL_LIBNAME=""
 	      ],
 
 	      [
 		PKG_CHECK_EXISTS([gl],
-                  [COGL_PKG_REQUIRES="$COGL_PKG_REQUIRES gl"],
+                  dnl We don't want to use COGL_PKG_REQUIRES here because we don't want to
+                  dnl directly link against libGL
+                  [COGL_PKG_REQUIRES_GL="$COGL_PKG_REQUIRES_GL gl"],
 		  [AC_CHECK_LIB(GL, [glGetString],
-				[COGL_EXTRA_LDFLAGS="$COGL_EXTRA_LDFLAGS -lGL"],
+				,
 				[AC_MSG_ERROR([Unable to locate required GL library])])
 		  ])
+                COGL_GL_LIBNAME="GL"
 	      ])
 
         AC_DEFINE([HAVE_COGL_GL], [1], [Have GL for rendering])
@@ -510,13 +536,18 @@ AS_IF([test "x$enable_gl" = "xyes"],
         COGL_DEFINES_SYMBOLS="$COGL_DEFINES_SYMBOLS CLUTTER_COGL_HAS_GL"
       ])
 
-AS_IF([test $DRIVER_COUNT -gt 1],
-      [AC_MSG_ERROR(['The --enable-gl{es1,es2} options are currently mutually exclusive'])])
+AM_CONDITIONAL([COGL_DRIVER_GL_SUPPORTED], [test "x$enable_gl" = "xyes"])
+AM_CONDITIONAL([COGL_DRIVER_GLES_SUPPORTED],
+               [test "x$enable_gles1" = "xyes" || test "x$enable_gles2" = "xyes"])
 
-AC_SUBST([COGL_DRIVER])
+AC_SUBST([COGL_GL_LIBNAME])
+AC_SUBST([COGL_GLES1_LIBNAME])
+AC_SUBST([COGL_GLES2_LIBNAME])
 
-AM_CONDITIONAL([COGL_DRIVER_GL], [test "x$COGL_DRIVER" = "xgl"])
-AM_CONDITIONAL([COGL_DRIVER_GLES], [test "x$COGL_DRIVER" = "xgles"])
+if test "x$GL_LIBRARY_DIRECTLY_LINKED" = "xyes"; then
+   AC_DEFINE([HAVE_DIRECTLY_LINKED_GL_LIBRARY], [1],
+             [Defined if the GL library shouldn't be dlopened])
+fi
 
 dnl         ========================================================
 dnl         Check window system integration libraries...
@@ -531,7 +562,7 @@ AC_ARG_ENABLE(
 AS_IF([test "x$enable_glx" = "xyes"],
       [
         AS_IF([test "x$ALLOW_GLX" != "xyes"],
-              [AC_MSG_ERROR([GLX not supported with $COGL_DRIVER driver])])
+              [AC_MSG_ERROR([GLX not supported with this configuration])])
 
         NEED_XLIB=yes
         SUPPORT_GLX=yes
@@ -558,7 +589,7 @@ AC_ARG_ENABLE(
 AS_IF([test "x$enable_wgl" = "xyes"],
       [
         AS_IF([test "x$ALLOW_WGL" != "xyes"],
-              [AC_MSG_ERROR([WGL not supported with $COGL_DRIVER driver])])
+              [AC_MSG_ERROR([WGL not supported with this configuration])])
 
         SUPPORT_WGL=yes
         GL_WINSYS_APIS="$GL_WINSYS_APIS wgl"
@@ -681,7 +712,7 @@ AC_ARG_ENABLE(
   [xlib-egl-platform],
   [AC_HELP_STRING([--enable-xlib-egl-platform=@<:@no/yes@:>@], [Enable support for the Xlib egl platform @<:@default=auto@:>@])],
   [],
-  AS_IF([test "x$COGL_DRIVER" = "xgles" && test $EGL_PLATFORM_COUNT -eq 0],
+  AS_IF([test "x$enable_gles1" = "xyes" -o "x$enable_gles2" = "xyes" && test $EGL_PLATFORM_COUNT -eq 0],
         [enable_xlib_egl_platform=yes], [enable_xlib_egl_platform=no])
 )
 AS_IF([test "x$enable_xlib_egl_platform" = "xyes"],
@@ -813,7 +844,22 @@ AS_IF([test "x$have_glib" = "xno"], AC_MSG_ERROR([glib-2.0 is required]))
 COGL_PKG_REQUIRES="$COGL_PKG_REQUIRES glib-2.0"
 AC_SUBST(COGL_PKG_REQUIRES)
 PKG_CHECK_MODULES(COGL_DEP, [$COGL_PKG_REQUIRES])
+if test -n "$COGL_PKG_REQUIRES_GL"; then
+  PKG_CHECK_MODULES(COGL_DEP_GL, [$COGL_PKG_REQUIRES_GL])
 
+  dnl Strip out the GL libraries from the GL pkg-config files so we can
+  dnl dynamically load them instead
+  gl_libs=""
+  for x in $COGL_DEP_GL_LIBS; do
+    AS_CASE([$x],
+            [-lGL], [],
+            [-lGLESv2], [],
+            [-lGLESv1_CM], [],
+            [*], [gl_libs="$gl_libs $x"])
+  done
+  COGL_DEP_CFLAGS="$COGL_DEP_CFLAGS $COGL_DEP_CFLAGS_GL"
+  COGL_DEP_LIBS="$COGL_DEP_LIBS $gl_libs"
+fi
 
 dnl ================================================================
 dnl Misc program dependencies.
@@ -891,7 +937,7 @@ doc/reference/Makefile
 doc/reference/cogl/Makefile
 doc/reference/cogl/cogl-docs.xml
 doc/reference/cogl-2.0-experimental/Makefile
-doc/reference/cogl-2.0-experimental/cogl-docs.xml
+doc/reference/cogl-2.0-experimental/cogl-2.0-experimental-docs.xml
 examples/Makefile
 po/Makefile.in
 )
@@ -910,7 +956,7 @@ echo "        Prefix: ${prefix}"
 echo ""
 # Features
 echo " • Features:"
-echo "        Driver: ${COGL_DRIVER} ${glesversion}"
+echo "        Drivers: ${enabled_drivers}"
 echo "        GL Window System APIs:${GL_WINSYS_APIS}"
 if test "x$SUPPORT_EGL" = "xyes"; then
 echo "        EGL Platforms:${EGL_PLATFORMS}"

@@ -102,10 +102,10 @@ typedef struct _CoglJournalFlushState
   gsize                stride;
   size_t               array_offset;
   GLuint               current_vertex;
-#ifndef HAVE_COGL_GL
+
   CoglIndices         *indices;
   gsize                indices_type_size;
-#endif
+
   CoglMatrixStack     *modelview_stack;
   CoglMatrixStack     *projection_stack;
 
@@ -301,35 +301,38 @@ _cogl_journal_flush_modelview_and_entries (CoglJournalEntry *batch_start,
     draw_flags |= COGL_DRAW_COLOR_ATTRIBUTE_IS_OPAQUE;
 
 #ifdef HAVE_COGL_GL
-
-  /* XXX: it's rather evil that we sneak in the GL_QUADS enum here... */
-  _cogl_draw_attributes (GL_QUADS,
-                         state->current_vertex, batch_len * 4,
-                         attributes,
-                         state->attributes->len,
-                         draw_flags);
-
-#else /* HAVE_COGL_GL */
-  if (batch_len > 1)
+  if (ctx->driver == COGL_DRIVER_GL)
     {
-      _cogl_draw_indexed_attributes (COGL_VERTICES_MODE_TRIANGLES,
-                                     state->current_vertex * 6 / 4,
-                                     batch_len * 6,
-                                     state->indices,
-                                     attributes,
-                                     state->attributes->len,
-                                     draw_flags);
-
-    }
-  else
-    {
-      _cogl_draw_attributes (COGL_VERTICES_MODE_TRIANGLE_FAN,
-                             state->current_vertex, 4,
+      /* XXX: it's rather evil that we sneak in the GL_QUADS enum here... */
+      _cogl_draw_attributes (GL_QUADS,
+                             state->current_vertex, batch_len * 4,
                              attributes,
                              state->attributes->len,
                              draw_flags);
     }
-#endif
+  else
+#endif /* HAVE_COGL_GL */
+    {
+      if (batch_len > 1)
+        {
+          _cogl_draw_indexed_attributes (COGL_VERTICES_MODE_TRIANGLES,
+                                         state->current_vertex * 6 / 4,
+                                         batch_len * 6,
+                                         state->indices,
+                                         attributes,
+                                         state->attributes->len,
+                                         draw_flags);
+
+        }
+      else
+        {
+          _cogl_draw_attributes (COGL_VERTICES_MODE_TRIANGLE_FAN,
+                                 state->current_vertex, 4,
+                                 attributes,
+                                 state->attributes->len,
+                                 draw_flags);
+        }
+    }
 
   /* DEBUGGING CODE XXX: This path will cause all rectangles to be
    * drawn with a coloured outline. Each batch will be rendered with
@@ -619,9 +622,8 @@ _cogl_journal_flush_vbo_offsets_and_entries (CoglJournalEntry *batch_start,
                         4,
                         COGL_ATTRIBUTE_TYPE_UNSIGNED_BYTE);
 
-#ifndef HAVE_COGL_GL
-  state->indices = cogl_get_rectangle_indices (batch_len);
-#endif
+  if (ctx->driver != COGL_DRIVER_GL)
+    state->indices = cogl_get_rectangle_indices (batch_len);
 
   /* We only create new Attributes when the stride within the
    * AttributeBuffer changes. (due to a change in the number of pipeline
@@ -1647,8 +1649,7 @@ entry_to_screen_polygon (const CoglJournalEntry *entry,
                               poly, /* points_out */
                               4 /* n_points */);
 
-  _cogl_framebuffer_get_viewport4fv (cogl_get_draw_framebuffer (),
-                                     viewport);
+  cogl_framebuffer_get_viewport4fv (cogl_get_draw_framebuffer (), viewport);
 
 /* Scale from OpenGL normalized device coordinates (ranging from -1 to 1)
  * to Cogl window/framebuffer coordinates (ranging from 0 to buffer-size) with

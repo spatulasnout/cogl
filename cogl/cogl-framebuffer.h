@@ -40,6 +40,44 @@
 
 G_BEGIN_DECLS
 
+/**
+ * SECTION:cogl-framebuffer
+ * @short_description: A common interface for manipulating framebuffers
+ *
+ * Framebuffers are a collection of buffers that can be rendered too.
+ * A framebuffer may be comprised of one or more color buffers, an
+ * optional depth buffer and an optional stencil buffer. Other
+ * configuration parameters are associated with framebuffers too such
+ * as whether the framebuffer supports multi-sampling (an anti-aliasing
+ * technique) or dithering.
+ *
+ * There are two kinds of framebuffer in Cogl, #CoglOnscreen
+ * framebuffers and #CoglOffscreen framebuffers. As the names imply
+ * offscreen framebuffers are for rendering something offscreen
+ * (perhaps to a texture which is bound as one of the color buffers).
+ * The exact semantics of onscreen framebuffers depends on the window
+ * system backend that you are using, but typically you can expect
+ * rendering to a #CoglOnscreen framebuffer will be immediately
+ * visible to the user.
+ *
+ * If you want to create a new framebuffer then you should start by
+ * looking at the #CoglOnscreen and #CoglOffscreen constructor
+ * functions, such as cogl_offscreen_new_to_texture() or
+ * cogl_onscreen_new(). The #CoglFramebuffer interface deals with
+ * all aspects that are common between those two types of framebuffer.
+ *
+ * Setup of a new CoglFramebuffer happens in two stages. There is a
+ * configuration stage where you specify all the options and ancillary
+ * buffers you want associated with your framebuffer and then when you
+ * are happy with the configuration you can "allocate" the framebuffer
+ * using cogl_framebuffer_allocate (). Technically explicitly calling
+ * cogl_framebuffer_allocate () is optional for convenience and the
+ * framebuffer will automatically be allocated when you first try to
+ * draw to it, but if you do the allocation manually then you can
+ * also catch any possible errors that may arise from your
+ * configuration.
+ */
+
 #ifdef COGL_ENABLE_EXPERIMENTAL_API
 #define cogl_onscreen_new cogl_onscreen_new_EXP
 
@@ -57,6 +95,95 @@ cogl_framebuffer_get_width (CoglFramebuffer *framebuffer);
 #define cogl_framebuffer_get_height cogl_framebuffer_get_height_EXP
 int
 cogl_framebuffer_get_height (CoglFramebuffer *framebuffer);
+
+#define cogl_framebuffer_set_viewport cogl_framebuffer_set_viewport_EXP
+void
+cogl_framebuffer_set_viewport (CoglFramebuffer *framebuffer,
+                               float x,
+                               float y,
+                               float width,
+                               float height);
+
+#define cogl_framebuffer_get_viewport_x cogl_framebuffer_get_viewport_x_EXP
+float
+cogl_framebuffer_get_viewport_x (CoglFramebuffer *framebuffer);
+
+#define cogl_framebuffer_get_viewport_y cogl_framebuffer_get_viewport_y_EXP
+float
+cogl_framebuffer_get_viewport_y (CoglFramebuffer *framebuffer);
+
+#define cogl_framebuffer_get_viewport_width cogl_framebuffer_get_viewport_width_EXP
+float
+cogl_framebuffer_get_viewport_width (CoglFramebuffer *framebuffer);
+
+#define cogl_framebuffer_get_viewport_height cogl_framebuffer_get_viewport_height_EXP
+float
+cogl_framebuffer_get_viewport_height (CoglFramebuffer *framebuffer);
+
+#define cogl_framebuffer_get_viewport4fv cogl_framebuffer_get_viewport4fv_EXP
+void
+cogl_framebuffer_get_viewport4fv (CoglFramebuffer *framebuffer,
+                                  float *viewport);
+
+/**
+ * cogl_framebuffer_get_red_bits:
+ * @framebuffer: a pointer to a #CoglFramebuffer
+ *
+ * Retrieves the number of red bits of @framebuffer
+ *
+ * Return value: the number of bits
+ *
+ * Since: 1.8
+ * Stability: unstable
+ */
+#define cogl_framebuffer_get_red_bits cogl_framebuffer_get_red_bits_EXP
+int
+cogl_framebuffer_get_red_bits (CoglFramebuffer *framebuffer);
+
+/**
+ * cogl_framebuffer_get_green_bits:
+ * @framebuffer: a pointer to a #CoglFramebuffer
+ *
+ * Retrieves the number of green bits of @framebuffer
+ *
+ * Return value: the number of bits
+ *
+ * Since: 1.8
+ * Stability: unstable
+ */
+#define cogl_framebuffer_get_green_bits cogl_framebuffer_get_green_bits_EXP
+int
+cogl_framebuffer_get_green_bits (CoglFramebuffer *framebuffer);
+
+/**
+ * cogl_framebuffer_get_blue_bits:
+ * @framebuffer: a pointer to a #CoglFramebuffer
+ *
+ * Retrieves the number of blue bits of @framebuffer
+ *
+ * Return value: the number of bits
+ *
+ * Since: 1.8
+ * Stability: unstable
+ */
+#define cogl_framebuffer_get_blue_bits cogl_framebuffer_get_blue_bits_EXP
+int
+cogl_framebuffer_get_blue_bits (CoglFramebuffer *framebuffer);
+
+/**
+ * cogl_framebuffer_get_alpha_bits:
+ * @framebuffer: a pointer to a #CoglFramebuffer
+ *
+ * Retrieves the number of alpha bits of @framebuffer
+ *
+ * Return value: the number of bits
+ *
+ * Since: 1.8
+ * Stability: unstable
+ */
+#define cogl_framebuffer_get_blue_bits cogl_framebuffer_get_blue_bits_EXP
+int
+cogl_framebuffer_get_alpha_bits (CoglFramebuffer *framebuffer);
 
 #define cogl_framebuffer_swap_buffers cogl_framebuffer_swap_buffers_EXP
 void
@@ -98,7 +225,7 @@ typedef void (*CoglOnscreenX11MaskCallback) (CoglOnscreen *onscreen,
                                              void *user_data);
 
 /**
- * cogl_onscreen_x11_set_foreign_window_xid:
+ * cogl_x11_onscreen_set_foreign_window_xid:
  * @onscreen: The unallocated framebuffer to associated with an X
  *            window.
  * @xid: The XID of an existing X window
@@ -136,7 +263,7 @@ typedef void (*CoglOnscreenX11MaskCallback) (CoglOnscreen *onscreen,
  *
  * {
  *   *snip*
- *   cogl_onscreen_x11_set_foreign_window_xid (onscreen,
+ *   cogl_x11_onscreen_set_foreign_window_xid (onscreen,
  *                                             data->xwin,
  *                                             my_update_cogl_x11_event_mask,
  *                                             data);
@@ -147,33 +274,33 @@ typedef void (*CoglOnscreenX11MaskCallback) (CoglOnscreen *onscreen,
  * Since: 2.0
  * Stability: Unstable
  */
-#define cogl_onscreen_x11_set_foreign_window_xid \
-  cogl_onscreen_x11_set_foreign_window_xid_EXP
+#define cogl_x11_onscreen_set_foreign_window_xid \
+  cogl_x11_onscreen_set_foreign_window_xid_EXP
 void
-cogl_onscreen_x11_set_foreign_window_xid (CoglOnscreen *onscreen,
+cogl_x11_onscreen_set_foreign_window_xid (CoglOnscreen *onscreen,
                                           guint32 xid,
                                           CoglOnscreenX11MaskCallback update,
                                           void *user_data);
 
-#define cogl_onscreen_x11_get_window_xid cogl_onscreen_x11_get_window_xid_EXP
+#define cogl_x11_onscreen_get_window_xid cogl_x11_onscreen_get_window_xid_EXP
 guint32
-cogl_onscreen_x11_get_window_xid (CoglOnscreen *onscreen);
+cogl_x11_onscreen_get_window_xid (CoglOnscreen *onscreen);
 
-#define cogl_onscreen_x11_get_visual_xid cogl_onscreen_x11_get_visual_xid_EXP
+#define cogl_x11_onscreen_get_visual_xid cogl_x11_onscreen_get_visual_xid_EXP
 guint32
-cogl_onscreen_x11_get_visual_xid (CoglOnscreen *onscreen);
+cogl_x11_onscreen_get_visual_xid (CoglOnscreen *onscreen);
 #endif /* COGL_HAS_X11 */
 
 #ifdef COGL_HAS_WIN32_SUPPORT
-#define cogl_onscreen_win32_set_foreign_window \
-  cogl_onscreen_win32_set_foreign_window_EXP
+#define cogl_win32_onscreen_set_foreign_window \
+  cogl_win32_onscreen_set_foreign_window_EXP
 void
-cogl_onscreen_win32_set_foreign_window (CoglOnscreen *onscreen,
+cogl_win32_onscreen_set_foreign_window (CoglOnscreen *onscreen,
                                         HWND hwnd);
 
-#define cogl_onscreen_win32_get_window cogl_onscreen_win32_get_window_EXP
+#define cogl_win32_onscreen_get_window cogl_win32_onscreen_get_window_EXP
 HWND
-cogl_onscreen_win32_get_window (CoglOnscreen *onscreen);
+cogl_win32_onscreen_get_window (CoglOnscreen *onscreen);
 #endif /* COGL_HAS_WIN32_SUPPORT */
 
 #if COGL_HAS_EGL_PLATFORM_WAYLAND_SUPPORT
