@@ -25,7 +25,7 @@ m4_define([cogl_version],
 dnl Since the core Cogl library has to also maintain support for the
 dnl Cogl 1.x API for Clutter then we track the 1.x version separately.
 m4_define([cogl_1_minor_version], [7])
-m4_define([cogl_1_micro_version], [3])
+m4_define([cogl_1_micro_version], [5])
 m4_define([cogl_1_version], [1.cogl_1_minor_version.cogl_1_micro_version])
 
 dnl ================================================================
@@ -55,7 +55,7 @@ dnl ================================================================
 #
 #  5. If any interfaces have been removed since the last public release,
 #     then set AGE to 0.
-m4_define([cogl_lt_current], 1)
+m4_define([cogl_lt_current], 2)
 m4_define([cogl_lt_revision], 0)
 m4_define([cogl_lt_age], 0)
 # We do also tell libtool the pretty version:
@@ -223,8 +223,8 @@ dnl     ============================================================
 dnl     Enable profiling
 dnl     ============================================================
 AC_ARG_ENABLE(profile,
-              AC_HELP_STRING([--enable-uprof=@<:@no/yes@:>@],
-                             [Turn on uprof profiling support. yes; All UProf profiling probe points are compiled in and may be runtime enabled. no; No profiling support will built into cogl.  @<:@default=no@:>@]),
+              [AC_HELP_STRING([--enable-profile=@<:@no/yes@:>@],
+                             [Turn on uprof profiling support. yes; All UProf profiling probe points are compiled in and may be runtime enabled. no; No profiling support will built into cogl.  @<:@default=no@:>@])],
               [],
               [enable_profile=no])
 AS_IF([test "x$enable_profile" = "xyes"],
@@ -387,7 +387,7 @@ AS_IF([test "x$enable_gles1" = "xyes"],
 
         PKG_CHECK_EXISTS([glesv1_cm],
           [COGL_PKG_REQUIRES_GL="$COGL_PKG_REQUIRES_GL glesv1_cm"
-           COGL_GLES1_LIBNAME="GLESv1_CM"
+           COGL_GLES1_LIBNAME="libGLESv1_CM.so"
            NEED_EGL=yes
           ],
           [
@@ -430,10 +430,10 @@ AS_IF([test "x$enable_gles1" = "xyes"],
             # bundles the GLES and EGL API together and -lGLESv1_CM
             # would be used for a standalone GLES API.
             AC_CHECK_LIB(GLES_CM, [eglInitialize],
-              [COGL_GLES1_LIBNAME="GLES_CM"],
+              [COGL_GLES1_LIBNAME="libGLES_CM.so"],
               [
                 AC_CHECK_LIB(GLESv1_CM, [glFlush],
-                  [COGL_GLES1_LIBNAME="GLESv1_CM"
+                  [COGL_GLES1_LIBNAME="libGLESv1_CM.so"
                    NEED_SEPARATE_EGL=yes
                   ],
                   [AC_MSG_ERROR([Unable to locate required GLES 1.x Common Profile library])])
@@ -463,7 +463,7 @@ AS_IF([test "x$enable_gles2" = "xyes"],
 
         PKG_CHECK_EXISTS([glesv2],
           [COGL_PKG_REQUIRES_GL="$COGL_PKG_REQUIRES_GL glesv2"
-           COGL_GLES2_LIBNAME="GLESv2"
+           COGL_GLES2_LIBNAME="libGLESv2.so"
           ],
           [
             # We have to check the two headers independently as GLES2/gl2ext.h
@@ -477,7 +477,7 @@ AS_IF([test "x$enable_gles2" = "xyes"],
                             [AC_MSG_ERROR([Unable to locate GLES2/gl2ext.h])],
                             [#include <GLES2/gl2.h>])
 
-            COGL_GLES2_LIBNAME="GLESv2"
+            COGL_GLES2_LIBNAME="libGLESv2.so"
           ])
 
         NEED_EGL=yes
@@ -527,7 +527,7 @@ AS_IF([test "x$enable_gl" = "xyes"],
 				,
 				[AC_MSG_ERROR([Unable to locate required GL library])])
 		  ])
-                COGL_GL_LIBNAME="GL"
+                COGL_GL_LIBNAME="libGL.so.1"
 	      ])
 
         AC_DEFINE([HAVE_COGL_GL], [1], [Have GL for rendering])
@@ -539,6 +539,20 @@ AS_IF([test "x$enable_gl" = "xyes"],
 AM_CONDITIONAL([COGL_DRIVER_GL_SUPPORTED], [test "x$enable_gl" = "xyes"])
 AM_CONDITIONAL([COGL_DRIVER_GLES_SUPPORTED],
                [test "x$enable_gles1" = "xyes" || test "x$enable_gles2" = "xyes"])
+
+dnl Allow the GL library names to be overridden with configure options
+AC_ARG_WITH([gl-libname],
+            [AS_HELP_STRING([--with-gl-libname],
+                            override the name of the GL library to dlopen)],
+            [COGL_GL_LIBNAME="$withval"])
+AC_ARG_WITH([gles1-libname],
+            [AS_HELP_STRING([--with-gles1-libname],
+                            override the name of the GLESv1 library to dlopen)],
+            [COGL_GLES1_LIBNAME="$withval"])
+AC_ARG_WITH([gles2-libname],
+            [AS_HELP_STRING([--with-gles2-libname],
+                            override the name of the GLESv2 library to dlopen)],
+            [COGL_GLES2_LIBNAME="$withval"])
 
 AC_SUBST([COGL_GL_LIBNAME])
 AC_SUBST([COGL_GLES1_LIBNAME])
@@ -568,7 +582,7 @@ AS_IF([test "x$enable_glx" = "xyes"],
         SUPPORT_GLX=yes
         GL_WINSYS_APIS="$GL_WINSYS_APIS glx"
 
-        AC_DEFINE([COGL_HAS_GLX_SUPPORT], [1], [Cogl supports OpenGL using the GLX API])
+        COGL_DEFINES_SYMBOLS="$COGL_DEFINES_SYMBOLS COGL_HAS_GLX_SUPPORT"
 
         # We might fall back to DRM for sync-to-vblank on GLX
         PKG_CHECK_EXISTS([libdrm],
@@ -957,6 +971,12 @@ echo ""
 # Features
 echo " • Features:"
 echo "        Drivers: ${enabled_drivers}"
+AS_IF([test "x$GL_LIBRARY_DIRECTLY_LINKED" != xyes],
+      [for driver in $enabled_drivers; do
+         driver=`echo $driver | tr "[gles]" "[GLES]"`
+         libname=`eval echo \\$COGL_${driver}_LIBNAME`
+         echo "        Library name for $driver: $libname"
+       done])
 echo "        GL Window System APIs:${GL_WINSYS_APIS}"
 if test "x$SUPPORT_EGL" = "xyes"; then
 echo "        EGL Platforms:${EGL_PLATFORMS}"

@@ -148,11 +148,14 @@ _cogl_framebuffer_init (CoglFramebuffer *framebuffer,
   framebuffer->viewport_y       = 0;
   framebuffer->viewport_width   = width;
   framebuffer->viewport_height  = height;
+  framebuffer->dither_enabled   = TRUE;
 
   framebuffer->modelview_stack  = _cogl_matrix_stack_new ();
   framebuffer->projection_stack = _cogl_matrix_stack_new ();
 
   framebuffer->dirty_bitmasks   = TRUE;
+
+  framebuffer->color_mask       = COGL_COLOR_MASK_ALL;
 
   /* Initialise the clip stack */
   _cogl_clip_state_init (&framebuffer->clip_state);
@@ -237,8 +240,24 @@ _cogl_clear4f (unsigned long buffers,
 
   if (buffers & COGL_BUFFER_BIT_COLOR)
     {
+      CoglFramebuffer *draw_framebuffer;
+
       GE( ctx, glClearColor (red, green, blue, alpha) );
       gl_buffers |= GL_COLOR_BUFFER_BIT;
+
+      draw_framebuffer = cogl_get_draw_framebuffer ();
+      if (ctx->current_gl_color_mask != draw_framebuffer->color_mask)
+        {
+          CoglColorMask color_mask = draw_framebuffer->color_mask;
+          GE( ctx, glColorMask (!!(color_mask & COGL_COLOR_MASK_RED),
+                                !!(color_mask & COGL_COLOR_MASK_GREEN),
+                                !!(color_mask & COGL_COLOR_MASK_BLUE),
+                                !!(color_mask & COGL_COLOR_MASK_ALPHA)));
+          ctx->current_gl_color_mask = color_mask;
+          /* Make sure the ColorMask is updated when the next primitive is drawn */
+          ctx->current_pipeline_changes_since_flush |=
+            COGL_PIPELINE_STATE_LOGIC_OPS;
+        }
     }
 
   if (buffers & COGL_BUFFER_BIT_DEPTH)
@@ -1436,6 +1455,15 @@ _cogl_framebuffer_flush_state (CoglFramebuffer *draw_buffer,
   _cogl_framebuffer_init_bits (draw_buffer);
   _cogl_framebuffer_init_bits (read_buffer);
 
+  if (ctx->current_gl_dither_enabled != draw_buffer->dither_enabled)
+    {
+      if (draw_buffer->dither_enabled)
+        GE (ctx, glEnable (GL_DITHER));
+      else
+        GE (ctx, glDisable (GL_DITHER));
+      ctx->current_gl_dither_enabled = draw_buffer->dither_enabled;
+    }
+
   /* XXX: Flushing clip state may trash the modelview and projection
    * matrices so we must do it before flushing the matrices...
    */
@@ -1480,6 +1508,43 @@ cogl_framebuffer_get_alpha_bits (CoglFramebuffer *framebuffer)
   _cogl_framebuffer_init_bits (framebuffer);
 
   return framebuffer->alpha_bits;
+}
+
+CoglColorMask
+cogl_framebuffer_get_color_mask (CoglFramebuffer *framebuffer)
+{
+  return framebuffer->color_mask;
+}
+
+void
+cogl_framebuffer_set_color_mask (CoglFramebuffer *framebuffer,
+                                 CoglColorMask color_mask)
+{
+  _COGL_GET_CONTEXT (ctx, NO_RETVAL);
+
+  cogl_flush (); /* XXX: Currently color mask changes don't go through the journal */
+  framebuffer->color_mask = color_mask;
+
+  /* Make sure the ColorMask is updated when the next primitive is drawn */
+  ctx->current_pipeline_changes_since_flush |=
+    COGL_PIPELINE_STATE_LOGIC_OPS;
+}
+
+gboolean
+cogl_framebuffer_get_dither_enabled (CoglFramebuffer *framebuffer)
+{
+  return framebuffer->dither_enabled;
+}
+
+void
+cogl_framebuffer_set_dither_enabled (CoglFramebuffer *framebuffer,
+                                     gboolean dither_enabled)
+{
+  if (framebuffer->dither_enabled == dither_enabled)
+    return;
+
+  cogl_flush (); /* Currently dithering changes aren't tracked in the journal */
+  framebuffer->dither_enabled = dither_enabled;
 }
 
 gboolean

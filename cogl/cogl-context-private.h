@@ -42,6 +42,7 @@
 #include "cogl-bitmask.h"
 #include "cogl-atlas.h"
 #include "cogl-texture-driver.h"
+#include "cogl-pipeline-cache.h"
 
 typedef struct
 {
@@ -106,9 +107,7 @@ struct _CoglContext
 
   int               legacy_state_set;
 
-#ifdef HAVE_COGL_GL
-  GHashTable       *arbfp_cache;
-#endif
+  CoglPipelineCache *pipeline_cache;
 
   /* Textures */
   CoglHandle        default_gl_texture_2d_tex;
@@ -204,6 +203,9 @@ struct _CoglContext
   CoglPipelineProgramType current_vertex_program_type;
   GLuint                  current_gl_program;
 
+  gboolean current_gl_dither_enabled;
+  CoglColorMask current_gl_color_mask;
+
   /* List of types that will be considered a subclass of CoglTexture in
      cogl_is_texture */
   GSList           *texture_types;
@@ -287,17 +289,15 @@ _cogl_context_get_default ();
 const CoglWinsysVtable *
 _cogl_context_get_winsys (CoglContext *context);
 
-/* Check whether the current GL context is supported by Cogl */
-gboolean
-_cogl_context_check_gl_version (CoglContext *context,
-                                GError **error);
-
 /* Query the GL extensions and lookup the corresponding function
  * pointers. Theoretically the list of extensions can change for
  * different GL contexts so it is the winsys backend's responsiblity
- * to know when to re-query the GL extensions. */
-void
-_cogl_context_update_features (CoglContext *context);
+ * to know when to re-query the GL extensions. The backend should also
+ * check whether the GL context is supported by Cogl. If not it should
+ * return FALSE and set @error */
+gboolean
+_cogl_context_update_features (CoglContext *context,
+                               GError **error);
 
 /* Obtains the context and returns retval if NULL */
 #define _COGL_GET_CONTEXT(ctxvar, retval) \

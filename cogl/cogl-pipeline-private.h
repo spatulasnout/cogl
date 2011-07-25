@@ -428,6 +428,7 @@ typedef enum
   COGL_PIPELINE_STATE_DEPTH_INDEX,
   COGL_PIPELINE_STATE_FOG_INDEX,
   COGL_PIPELINE_STATE_POINT_SIZE_INDEX,
+  COGL_PIPELINE_STATE_LOGIC_OPS_INDEX,
 
   /* non-sparse */
   COGL_PIPELINE_STATE_REAL_BLEND_ENABLE_INDEX,
@@ -471,6 +472,8 @@ typedef enum _CoglPipelineState
     1L<<COGL_PIPELINE_STATE_FOG_INDEX,
   COGL_PIPELINE_STATE_POINT_SIZE =
     1L<<COGL_PIPELINE_STATE_POINT_SIZE_INDEX,
+  COGL_PIPELINE_STATE_LOGIC_OPS =
+    1L<<COGL_PIPELINE_STATE_LOGIC_OPS_INDEX,
 
   COGL_PIPELINE_STATE_REAL_BLEND_ENABLE =
     1L<<COGL_PIPELINE_STATE_REAL_BLEND_ENABLE_INDEX,
@@ -504,14 +507,16 @@ typedef enum _CoglPipelineState
    COGL_PIPELINE_STATE_USER_SHADER | \
    COGL_PIPELINE_STATE_DEPTH | \
    COGL_PIPELINE_STATE_FOG | \
-   COGL_PIPELINE_STATE_POINT_SIZE)
+   COGL_PIPELINE_STATE_POINT_SIZE | \
+   COGL_PIPELINE_STATE_LOGIC_OPS)
 
 #define COGL_PIPELINE_STATE_MULTI_PROPERTY \
   (COGL_PIPELINE_STATE_LAYERS | \
    COGL_PIPELINE_STATE_LIGHTING | \
    COGL_PIPELINE_STATE_BLEND | \
    COGL_PIPELINE_STATE_DEPTH | \
-   COGL_PIPELINE_STATE_FOG)
+   COGL_PIPELINE_STATE_FOG | \
+   COGL_PIPELINE_STATE_LOGIC_OPS)
 
 #define COGL_PIPELINE_STATE_AFFECTS_VERTEX_CODEGEN \
   (COGL_PIPELINE_STATE_LAYERS | \
@@ -578,6 +583,11 @@ typedef struct
 
 typedef struct
 {
+  CoglColorMask color_mask;
+} CoglPipelineLogicOpsState;
+
+typedef struct
+{
   CoglPipelineLightingState lighting_state;
   CoglPipelineAlphaFuncState alpha_state;
   CoglPipelineBlendState blend_state;
@@ -585,6 +595,7 @@ typedef struct
   CoglDepthState depth_state;
   CoglPipelineFogState fog_state;
   float point_size;
+  CoglPipelineLogicOpsState logic_ops_state;
 } CoglPipelineBigState;
 
 typedef enum
@@ -649,10 +660,6 @@ struct _CoglPipeline
    * pipeline in comparison to its parent. */
   unsigned long    differences;
 
-  /* The fragment processing backends can associate private data with a
-   * pipeline. */
-  void		  *fragend_privs[COGL_PIPELINE_N_FRAGENDS];
-
   /* Whenever a pipeline is modified we increment the age. There's no
    * guarantee that it won't wrap but it can nevertheless be a
    * convenient mechanism to determine when a pipeline has been
@@ -703,17 +710,6 @@ struct _CoglPipeline
    */
 
   /* bitfields */
-
-  /* A pipeline can have private data associated with it for multiple
-   * fragment processing backends. Although only one backend is
-   * associated with a pipeline the backends may want to cache private
-   * state with the ancestors of other pipelines and those ancestors
-   * could currently be associated with different backends.
-   *
-   * Each set bit indicates if the corresponding ->fragend_privs[]
-   * entry is valid.
-   */
-  unsigned int          fragend_priv_set_mask:COGL_PIPELINE_N_FRAGENDS;
 
   /* Weak pipelines don't count as dependants on their parents which
    * means that the parent pipeline can be modified without
@@ -771,8 +767,6 @@ typedef struct _CoglPipelineFragend
   void (*layer_pre_change_notify) (CoglPipeline *owner,
                                    CoglPipelineLayer *layer,
                                    CoglPipelineLayerState change);
-
-  void (*free_priv) (CoglPipeline *pipeline);
 } CoglPipelineFragend;
 
 typedef struct _CoglPipelineVertend

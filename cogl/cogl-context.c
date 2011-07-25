@@ -278,6 +278,9 @@ cogl_context_new (CoglDisplay *display,
   context->current_vertex_program_type = COGL_PIPELINE_PROGRAM_TYPE_FIXED;
   context->current_gl_program = 0;
 
+  context->current_gl_dither_enabled = TRUE;
+  context->current_gl_color_mask = COGL_COLOR_MASK_ALL;
+
   context->gl_blend_enable_cache = FALSE;
 
   context->depth_test_enabled_cache = FALSE;
@@ -290,10 +293,7 @@ cogl_context_new (CoglDisplay *display,
 
   context->legacy_depth_test_enabled = FALSE;
 
-#ifdef HAVE_COGL_GL
-  _context->arbfp_cache = g_hash_table_new (_cogl_pipeline_fragend_arbfp_hash,
-                                            _cogl_pipeline_fragend_arbfp_equal);
-#endif
+  context->pipeline_cache = cogl_pipeline_cache_new ();
 
   for (i = 0; i < COGL_BUFFER_BIND_TARGET_COUNT; i++)
     context->current_buffer[i] = NULL;
@@ -468,9 +468,7 @@ _cogl_context_free (CoglContext *context)
     cogl_object_unref (_context->flushed_projection_stack);
 #endif
 
-#ifdef HAVE_COGL_GL
-  g_hash_table_unref (context->arbfp_cache);
-#endif
+  cogl_pipeline_cache_free (context->pipeline_cache);
 
   g_byte_array_free (context->buffer_map_fallback_array, TRUE);
 
@@ -512,35 +510,16 @@ cogl_egl_context_get_egl_display (CoglContext *context)
 #endif
 
 gboolean
-_cogl_context_check_gl_version (CoglContext *context,
-                                GError **error)
+_cogl_context_update_features (CoglContext *context,
+                               GError **error)
 {
 #ifdef HAVE_COGL_GL
   if (context->driver == COGL_DRIVER_GL)
-    return _cogl_gl_check_gl_version (context, error);
+    return _cogl_gl_update_features (context, error);
 #endif
 
 #if defined(HAVE_COGL_GLES) || defined(HAVE_COGL_GLES2)
-  return _cogl_gles_check_gl_version (context, error);
-#endif
-
-  g_assert_not_reached ();
-}
-
-void
-_cogl_context_update_features (CoglContext *context)
-{
-#ifdef HAVE_COGL_GL
-  if (context->driver == COGL_DRIVER_GL)
-    {
-      _cogl_gl_update_features (context);
-      return;
-    }
-#endif
-
-#if defined(HAVE_COGL_GLES) || defined(HAVE_COGL_GLES2)
-  _cogl_gles_update_features (context);
-  return;
+  return _cogl_gles_update_features (context, error);
 #endif
 
   g_assert_not_reached ();

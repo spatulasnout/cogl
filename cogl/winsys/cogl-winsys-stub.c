@@ -83,9 +83,7 @@ _cogl_winsys_context_init (CoglContext *context, GError **error)
 {
   context->winsys = &_cogl_winsys_stub_dummy_ptr;
 
-  _cogl_context_update_features (context);  /* %%BWK - must occur before _cogl_context_check_gl_version */
-  
-  if (!_cogl_context_check_gl_version (context, error))
+  if (!_cogl_context_update_features (context, error))
     return FALSE;
 
   memset (context->winsys_features, 0, sizeof (context->winsys_features));
